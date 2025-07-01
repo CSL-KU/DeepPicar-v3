@@ -37,37 +37,27 @@ Also install the python package "inputs" if you would like to to use Logitech F7
     $ cd inputs
     $ sudo pip3 install .
     
-Lastly install node.js and serve package to enable web interface
-
-    $ sudo apt install nodejs npm
-    $ npm i serve
-    
 ## Manual control and Data collection
 
 To start the backend server
 
-    $ sudo nice --20 python3 deeppicar.py -w -n 4 -f 30
-
-To start the web client
-
-    $ npx serve web/dist/ 
-
-Using the web client, you can control the car, record and download data, upload the model, and run the DNN
+    $ sudo nice --20 python3 deeppicar.py -n 4 -f 30
 
 Keyboard controls
-* **'UpArrow'**: move forward 
-* **'DownArrow'**: move backward
-* **'Space'**: stop
-* **'LeftArrow'**: turn left
-* **'RightArrow'**: turn right 
+A: move forward 
+Z: move backward
+S: stop
+J: turn left
+K: center
+L: turn right 
+R: start/stop recording
+D: turn on DNN
 
 Use the keys to manually control the car. Once you become confident in controlling the car, collect the data to be used for training the DNN model. 
 
-The data collection can be enabled and stopped by pressing `Finish` button. Once recording is enabled, the video feed and the corresponding control inputs are stored in `out-video.avi` and `out-key.csv` files, respectively. Later, we will use these files for training. It can be downloaded with the download button.
+The data collection can be enabled and stopped by pressing `R`. Once recording is enabled, the video feed and the corresponding control inputs are stored in `out-video.avi` and `out-key.csv` files, respectively. Later, we will use these files for training. It can be downloaded using scp commands.
 
 Each recording attempt with overwrite the previous
-
-Rename recorded avi and csv files to out-video-XX.avi and out-video-XX.csv where XX with appropriate numbers. 
 
 Compress all the recorded files into a single zip file, say Dataset.zip for Colab.
 
@@ -81,13 +71,13 @@ Open the colab notebook. Following the notebook, you will upload the dataset to 
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/CSL-KU/DeepPicar-v3/blob/devel/RunAll.ipynb)
 
-After you are done trainig, you need to copy the trained tflite model file (`large-200x66x3.tflite` by default) to the Pi using the web uploader
+After you are done trainig, you need to copy the trained tflite model file (`large-200x66x3.tflite` by default) to the Pi using scp commands.
 
 ## Autonomous control
 
 Copy the trained model to the DeepPicar. 
 
-Enable autonomous driving through the `Start DNN` button.
+Enable autonomous driving by pressing A to go foward then D.
 
 ## Driving Videos
 
