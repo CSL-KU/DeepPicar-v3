@@ -33,9 +33,9 @@ In addition, you need to install necessary python drivers. For polulu drv8835, d
 
 Also install the python package "inputs" if you would like to to use Logitech F710 gamepad for data collection.
 
-    $ git clone https://github.com/zeth/inputs.git
+    $ git clone https://github.com/qtweng/inputs.git
     $ cd inputs
-    $ sudo python setup.py install
+    $ sudo pip3 install .
     
 Lastly install node.js and serve package to enable web interface
 
