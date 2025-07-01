@@ -44,14 +44,14 @@ To start the backend server
     $ sudo nice --20 python3 deeppicar.py -n 4 -f 30
 
 Keyboard controls
-A: move forward 
-Z: move backward
-S: stop
-J: turn left
-K: center
-L: turn right 
-R: start/stop recording
-D: turn on DNN
+A: move forward   
+Z: move backward  
+S: stop  
+J: turn left  
+K: center  
+L: turn right   
+R: start/stop recording  
+D: turn on DNN  
 
 Use the keys to manually control the car. Once you become confident in controlling the car, collect the data to be used for training the DNN model. 
 
