@@ -15,7 +15,7 @@ https://www.youtube.com/watch?v=X1DDN9jcwjk
 Install DeepPicar.
 
     $ sudo apt install libatlas-base-dev
-    $ git clone --depth=1 https://github.com/CSL-KU/DeepPicar-v3 -b devel
+    $ git clone https://github.com/CSL-KU/DeepPicar-v3
     $ cd DeepPicar-v3 
     $ sudo pip3 install -r requirements.txt
 
