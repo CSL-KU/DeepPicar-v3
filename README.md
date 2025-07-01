@@ -43,7 +43,7 @@ To start the backend server
 
     $ sudo nice --20 python3 deeppicar.py -n 4 -f 30
 
-Keyboard controls
+Keyboard controls  
 A: move forward   
 Z: move backward  
 S: stop  
