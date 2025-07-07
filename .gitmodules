@@ -1,3 +1,6 @@
 [submodule "inputs"]
 	path = inputs
 	url = https://github.com/qtweng/inputs.git
+[submodule "drv8835-motor-driver-rpi"]
+	path = drv8835-motor-driver-rpi
+	url = https://github.com/pololu/drv8835-motor-driver-rpi.git
