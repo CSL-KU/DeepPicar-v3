@@ -14,10 +14,11 @@ https://www.youtube.com/watch?v=X1DDN9jcwjk
 
 Install DeepPicar.
 
-    $ sudo apt install libatlas-base-dev
-    $ git clone https://github.com/CSL-KU/DeepPicar-v3
+    $ git clone --recurse-submodules --depth 1 https://github.com/CSL-KU/DeepPicar-v3
     $ cd DeepPicar-v3 
     $ sudo pip3 install -r requirements.txt
+    $ sudo apt install libatlas-base-dev   
+    
 
 Edit `params.py` to select correct camera and actuator drivers. 
 The setting below represents the standard webcam and drv8835 configuration, for example. 
@@ -25,15 +26,13 @@ The setting below represents the standard webcam and drv8835 configuration, for 
     camera="camera-webcam"
     actuator="actuator-drv8835"
     
-In addition, you need to install necessary python drivers. For polulu drv8835, do following.
+In addition, you need to setup the necessary python drivers. For polulu drv8835, do following.
 
-    $ git clone https://github.com/pololu/drv8835-motor-driver-rpi.git
     $ cd drv8835-motor-driver-rpi
     $ sudo python3 setup.py install
 
 Also install the python package "inputs" if you would like to to use Logitech F710 gamepad for data collection.
 
-    $ git clone https://github.com/qtweng/inputs.git
     $ cd inputs
     $ sudo pip3 install .
     
