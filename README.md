@@ -17,7 +17,8 @@ Install DeepPicar.
     $ git clone --recurse-submodules --depth 1 https://github.com/CSL-KU/DeepPicar-v3
     $ cd DeepPicar-v3 
     $ sudo apt update
-    $ sudo apt install libatlas-base-dev 
+    $ sudo apt install libatlas-base-dev
+    $ sudo apt install libopenblas0
     $ sudo apt-get install python3-opencv
     $ sudo pip3 install -r requirements.txt
     
