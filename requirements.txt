@@ -1,5 +1,4 @@
-opencv-python
-numpy>=1.20.0
+numpy>=1.20.0, <2.0
 tflite_runtime
 wiringpi
 uploadserver

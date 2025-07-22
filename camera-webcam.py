@@ -3,7 +3,7 @@ from threading import Thread,Lock
 import time
 
 use_thread = False
-need_flip = True
+need_flip = False
 cap = None
 frame = None
 lock=Lock()
