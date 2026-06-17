@@ -1,77 +1,80 @@
+from picamera2 import Picamera2
+from threading import Thread, Lock
 import cv2
-from threading import Thread,Lock
 import time
 
 use_thread = False
 need_flip = False
-cap = None
 frame = None
-lock=Lock()
+lock = Lock()
+cam_thr = None
+picam2 = None
 
 # public API
 # init(), read_frame(), stop()
 
 def init(res=(320, 240), fps=30, threading=True):
-    print ("Initilize camera.")
-    global cap, use_thread, frame, cam_thr
+    global picam2, use_thread, frame, cam_thr
 
-    cap = cv2.VideoCapture(0)
+    print("Initializing Picamera2...")
+    picam2 = Picamera2()
+    config = picam2.create_preview_configuration(main={"size": res, "format": "RGB888"})
+    picam2.configure(config)
+    picam2.start()
 
-    cap.set(3, res[0]) # width
-    cap.set(4, res[1]) # height
-    cap.set(5, fps)
+    # Allow camera to warm up
+    time.sleep(1.0)
 
-    # start the camera thread
     if threading:
         use_thread = True
-        cam_thr = Thread(target=__update, args=())
+        cam_thr = Thread(target=__update, daemon=True)
         cam_thr.start()
-        print ("start camera thread")
-        time.sleep(1.0)
+        print("Camera thread started.")
     else:
-        print ("No camera threading.")
+        print("No camera threading.")
 
-    print ("camera init completed.")
+    print("Camera init completed.")
+
 
 def __update():
-    global frame
-    global lock
+    global frame, lock, use_thread
     while use_thread:
-        ret, tmp_frame = cap.read() # blocking read
-        if need_flip == True:
-            frame_ = cv2.flip(tmp_frame, -1)
-        else:
-            frame_ = tmp_frame
-        lock.acquire()
-        frame=frame_
-        lock.release()
-    print ("Camera thread finished...")
-    cap.release()        
+        tmp_frame = picam2.capture_array()
+        if need_flip:
+            tmp_frame = cv2.flip(tmp_frame, -1)
+        with lock:
+            frame = tmp_frame
+    print("Camera thread finished...")
+    picam2.stop()
+
 
 def read_frame():
-    global frame
-    global lock
+    global frame, lock
     if not use_thread:
-       ret, frame = cap.read() # blocking read
-       return frame
+        frame = picam2.capture_array()
+        return cv2.flip(frame, -1) if need_flip else frame
     else:
-        lock.acquire()
-        frame_=frame
-        lock.release()
-        return frame_
+        with lock:
+            return frame.copy() if frame is not None else None
+
 
 def stop():
     global use_thread
-    print ("Close the camera.")
+    print("Stopping camera...")
     use_thread = False
+    time.sleep(0.5)
+    if picam2:
+        picam2.stop()
+
 
 if __name__ == "__main__":
-    init()
+    init(threading=True)
     while True:
-        frame = read_frame()
-        cv2.imshow('frame', frame)
+        f = read_frame()
+        if f is not None:
+            cv2.imshow("frame", f)
         ch = cv2.waitKey(1) & 0xFF
         if ch == ord('q'):
             stop()
             break
-    
+    cv2.destroyAllWindows()

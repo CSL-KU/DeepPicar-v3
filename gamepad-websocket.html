@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <title>Gamepad capture page</title>
+</head>
+<body>
+    <h1>Gamepad capture page</h1>
+    <h3>Enter the IP for the robot</h3>
+    <input id="ip" type="text"></input>
+    <button id="connect">Connect to robot</button>
+    <button id="disconnect"></button>
+
+<script>
+    let socket;
+    let gamePadLoopFrame;
+
+    function connectWebSocket(){
+        ipAddress = document.getElementById("ip").value;
+        console.log(ipAddress);
+
+        socket = new WebSocket("ws://" + ipAddress);
+
+        gamePadLoop();
+
+
+     
+    
+    }
+
+
+    function gamePadLoop(){
+        //socket.send(JSON.stringify(navigator.getGamepads()[0]))
+        console.log(navigator.getGamepads()[0])
+        gamePadLoopFrame = requestAnimationFrame(gamePadLoop);
+
+    }
+
+    function endGPLoop(){
+        cancelAnimationFrame(gamePadLoopFrame);
+    }
+
+    document.getElementById("disconnect").addEventListener("click", endGPLoop)
+    document.getElementById("connect").addEventListener("click", connectWebSocket)
+</script>
+</body>
+</html>

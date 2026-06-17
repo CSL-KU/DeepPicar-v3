@@ -13,6 +13,10 @@ camera="camera-webcam"
 actuator="actuator-drv8835"
 
 ##########################################################
+#Address to send video to
+##########################################################
+dest_ip = "" # place ip of device on same network like : "xxx.xxx.x.xx"
+##########################################################
 # input config 
 ##########################################################
 img_width = 200

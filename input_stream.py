@@ -4,21 +4,29 @@ import time
 import atexit
 import termios, fcntl, sys, os
 import select
+import socket
+import struct
+
+import asyncio
+import json
+
+from datetime import datetime
 
 from multiprocessing import Process, Lock, Array, Value
 
-# WEB INPUT
-from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
-from functools import partial
-import json
 
-#import cv2
-#import logging
-#import params
-#camera   = __import__(params.camera)
+
+ 
+ 
+JS_EVENT_BUTTON = 0x01
+JS_EVENT_AXIS   = 0x02
+ 
+LISTEN_IP   = "0.0.0.0"
+LISTEN_PORT = 5005
+
 
 class input_stream:
-    def __init__(self, speed=50):
+    def __init__(self, speed=0.5):
         self.buffer = ' '
         self.direction = 0.
         self.speed = speed
@@ -31,6 +39,7 @@ class input_stream:
 
     def __del__(self):
         self.stop()
+
 
 class input_kbd(input_stream):
     def __init__(self, speed=50):
@@ -76,26 +85,42 @@ class input_kbd(input_stream):
                 self.buffer = sys.stdin.read(1)
                 break
         self.deinit(state)
-
-        if self.buffer == 'j': # left
-            self.direction = -1.0
-        elif self.buffer == 'l': # right
-            self.direction = 1.0
-        elif self.buffer == 'k': # center
-            self.direction = .0
-
         return self.buffer, self.direction, self.speed
 
-
 class input_gamepad(input_stream):
-    def __init__(self, speed=50):
-        self.shared_arr = Array('d', [0.]*8) # joystick pos and other buttons and finish state
+    def __init__(self, speed=0.5):
+        self.CALIBRATION_FILE = 'calibration.txt'
+        self.shared_arr = Array('d', [0.]*9) # joystick pos and other buttons and finish state
         #self.finish = Value('i', 1)
         self.lock=Lock()
         self.gamepad_process = Process(target=self.inputs_process, \
                 args=(), daemon=True )#args=(self.shared_arr, self.finish, lock,))
         self.gamepad_process.start()
         super().__init__(speed)
+
+    
+    def load_calibration(self):
+        try:
+            with open(self.CALIBRATION_FILE, 'r') as f:
+                data = f.read().strip().split(',')
+
+                steering_offset = float(data[0])
+
+                if len(data) > 1:
+                    throttle_offset = float(data[1])
+                else:
+                    throttle_offset = 0
+
+                return steering_offset, throttle_offset
+
+        except (FileNotFoundError, ValueError):
+            return 0, 0
+
+    def save_calibration(self, steering_offset, throttle_offset):
+        with open(self.CALIBRATION_FILE, 'w') as f:
+            f.write(f"{steering_offset:.4f},{throttle_offset:.4f}")
+
+
 
     def inputs_process(self): #shr_gamepad_state, finish, lock):
         import inputs
@@ -110,21 +135,45 @@ class input_gamepad(input_stream):
         print('Joystick is ready')
 
         disable_joystick=False
+        offset, throttle_offset = self.load_calibration()
         while True: #finish.value != 0:
             gamepad_events = inputs.get_gamepad()
             if disable_joystick and time.time() - gamepad_disable_time > 0.3: # 300 ms
                 disable_joystick = False
             lock.acquire()
             for event in gamepad_events:
-                if not disable_joystick and event.ev_type == 'Absolute' and event.code == 'ABS_X':
+                if event.ev_type == 'Absolute' and event.code == 'ABS_Z':
                     val = int(event.state)
-                    if val <= -256 or val >= 256: # calib, dead area
-                        shr_gamepad_state[0] = val / 32768 #/ -32768 to 32767
+                   
+                    center = 127.5
+                    if True: # calib, dead area
+                        if abs(val-center) < 5:
+                            normalized = 0 
+                        else:
+                            normalized = max(-1.0, min(1.0, (val - center) / 127.5))
+                        angle = round(normalized *30)
+                        shr_gamepad_state[0] = angle
+                if event.ev_type == 'Absolute' and event.code == 'ABS_Y':
+                    val = int(event.state)
+
+                    center = 128
+                    deadzone = 5
+
+                    if abs(val - center) < deadzone:
+                        shr_gamepad_state[8] = 0
+                    else:
+                        shr_gamepad_state[8] = max(-1.0, min(1.0, -(val - center) / 128))
+    
                 elif event.ev_type == 'Absolute' and event.code == 'ABS_HAT0Y':
+                    print(throttle_offset)
                     if int(event.state) == -1:
-                        shr_gamepad_state[1]=1.
+                        if throttle_offset < .5:
+                            throttle_offset = round(throttle_offset + 0.1, 1)
+                            self.save_calibration(offset, throttle_offset)
                     elif int(event.state) == 1:
-                        shr_gamepad_state[2]=1.
+                        if throttle_offset > 0:
+                            throttle_offset = round(throttle_offset - 0.1, 1)
+                            self.save_calibration(offset, throttle_offset)
                 elif event.ev_type == 'Absolute' and event.code == 'ABS_HAT0X':
                     if int(event.state) == -1:
                         shr_gamepad_state[0]= -1.
@@ -147,8 +196,15 @@ class input_gamepad(input_stream):
                     shr_gamepad_state[0]=0.
                     disable_joystick=True
                     gamepad_disable_time = time.time()
-            #if shr_gamepad_state[0] < 32768//2 and shr_gamepad_state[0] > -32768//2:
-            #    shr_gamepad_state[0] = 0. # dead area
+                elif event.ev_type == 'Key' and event.code == 'BTN_TR':  # Right trigger button
+                    if offset > -10:
+                        offset -= 1
+                        self.save_calibration(offset, throttle_offset)
+                elif event.ev_type == 'Key' and event.code == 'BTN_TL':  # Left trigger button
+                    if offset < 10:
+                        offset += 1
+                        self.save_calibration(offset, throttle_offset)
+        
             lock.release()
 
     def read_inp(self):
@@ -183,7 +239,8 @@ class input_gamepad(input_stream):
             self.buffer='t'
             #print ("toggle video mode")
 
-        self.direction = self.shared_arr[0] 
+        self.direction = self.shared_arr[0]
+        self.speed = self.shared_arr[8]
         self.lock.release()
 
         return self.buffer, self.direction, self.speed
@@ -193,146 +250,123 @@ class input_gamepad(input_stream):
         self.gamepad_process.terminate()
 
 
-class input_web_handler(BaseHTTPRequestHandler):
-    def __init__(self, shared_arr, lock, *args, **kwargs):
-        self.shared_arr = shared_arr
-        self.lock = lock
-        #cfg_cam_res = (320, 240)
-        #self.cfg_cam_fps = 20
-        #camera.init(res=cfg_cam_res, fps=self.cfg_cam_fps, threading=True)
-        super().__init__(*args, **kwargs)
+# class input_udp_gamepad(input_stream):
+#     def __init__(self, speed=0.5):
+#         self.shared_arr = Array('d', [0.] * 9)
+#         self.lock = Lock()
+#         self.gamepad_process = Process(
+#             target=self.inputs_process, args=(), daemon=True
+#         )
+#         self.gamepad_process.start()
+#         super().__init__(speed)
 
-    def do_OPTIONS(self):
-        self.send_response(200, "ok")
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS, POST')
-        self.send_header("Access-Control-Allow-Headers", "X-Requested-With")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.end_headers()
+#     CALIBRATION_FILE = 'calibration.txt'
+#     def load_calibration(self):
+#         try:
+#             with open(self.CALIBRATION_FILE, 'r') as f:
+#                 return float(f.read().strip())
+#         except (FileNotFoundError, ValueError):
+#             return 0
 
-    def do_GET(self):
-        if self.path == '/':
-            self.send_response(301)
-            self.send_header('Location', '/index.html')
-            self.end_headers()
-        else:
-            self.send_error(404)
-            self.end_headers()
+#     def save_calibration(self, center):
+#         with open(self.CALIBRATION_FILE, 'w') as f:
+#             f.write(str(center))
+ 
+#     def inputs_process(self):
+#         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+#         sock.bind((LISTEN_IP, LISTEN_PORT))
+#         print('Joystick is ready')
+ 
+#         shr_gamepad_state, lock = self.shared_arr, self.lock
+ 
+#         disable_joystick = False
+#         gamepad_disable_time = 0.0
+#         offset = self.load_calibration()
+#         while True:
+            
+#             data, _ = sock.recvfrom(8)
+#             if len(data) != 8:
+#                 continue
+ 
+#             _, value, event_type, number = struct.unpack("<IhBB", data)
 
-    def do_POST(self):
-        if self.path == '/actuate':
-            self.send_response(301)
-            self.end_headers()
-            self.data_string = self.rfile.read(int(self.headers['Content-Length']))
+#             if disable_joystick and time.time() - gamepad_disable_time > 0.3:
+#                 disable_joystick = False
+ 
+#             lock.acquire()
+ 
+#             if event_type == JS_EVENT_AXIS:
+#                 center = 32667/2
+#                 if event_type == JS_EVENT_AXIS:
+#                     if number == 0:  # steering: -32767 to 32767
+#                         val = value
+#                         normalized = val / 32767.0
+#                         if abs(normalized) < 0.05:
+#                             normalized = 0.0
+#                         else:
+#                             normalized = max(-1.0, min(1.0, normalized))
+#                         angle = round(normalized * 30, 1)
+#                         shr_gamepad_state[0] = angle
 
-            data = json.loads(self.data_string)
-            self.lock.acquire()
-            if data['params']['direction'] == 'left':
-                self.shared_arr[0] = -1.
-            elif data['params']['direction'] == 'center':
-                self.shared_arr[0] = 0.
-            elif data['params']['direction'] == 'right':
-                self.shared_arr[0] = 1.
-            elif data['params']['direction'] == 'forward':
-                self.shared_arr[1] = 1.
-            elif data['params']['direction'] == 'stop':
-                self.shared_arr[3] = 1. 
-            elif data['params']['direction'] == 'reverse':
-                self.shared_arr[2] = 1.
-
-            self.shared_arr[8] = float(data['params']['speed'])
-            self.lock.release()
-            #actuator.set_speed(data['params']['speed'])
-        elif self.path == '/record':
-            self.send_response(301)
-            self.end_headers()
-            self.data_string = self.rfile.read(int(self.headers['Content-Length']))
-
-            data = json.loads(self.data_string)
-
-            self.lock.acquire()
-            self.shared_arr[4] = 1. 
-            self.lock.release()
-
-
-        elif self.path == '/dnn':
-            self.send_response(301)
-            self.end_headers()
-            self.data_string = self.rfile.read(int(self.headers['Content-Length']))
-
-            data = json.loads(self.data_string)
-
-            self.lock.acquire()
-            self.shared_arr[5] = 1. 
-            self.lock.release()
-            #if data['params']['action'] == 'start':
-            #    use_dnn = True
-            #if data['params']['action'] == 'stop':
-            #    use_dnn = False
-
-
-# this takes the p
-class input_web(input_stream):
-    def __init__(self, speed=50):
-        self.shared_arr = Array('d', [0.]*9) # joystick pos and other buttons and finish state
-        self.lock = Lock()
-
-        self.ws_process = Process(target=self.web_server_process, \
-                args=(), daemon=True )
-        self.ws_process.start()
-        super().__init__(speed)
-
-    def web_server_process(self):
-        address = ('', 8000) # backend - frontend connection
-        handler = partial(input_web_handler, self.shared_arr, self.lock)
-        #server = HTTPServer(address, handler)
-        server = ThreadingHTTPServer(address, handler)
-        try:
-            server.serve_forever(poll_interval=0.05) # until terminated
-        except KeyboardInterrupt:
-            pass
-        server.server_close()
-
-    def read_inp(self):
-        self.buffer = ' '
-        self.lock.acquire()
-        if self.shared_arr[1] == 1.:
-            self.shared_arr[1] = 0.
-            self.buffer='a'
-            #print ("accel")
-        elif self.shared_arr[2] == 1.:
-            self.shared_arr[2] = 0.
-            self.buffer='z'
-            #print ("reverse")
-        elif self.shared_arr[3] == 1.:
-            self.shared_arr[3] = 0.
-            self.buffer='s'
-            #print ("stop")
-        elif self.shared_arr[4] == 1.:
-            self.shared_arr[4] = 0.
-            self.buffer='r'
-            #print ("toggle record mode")
-        elif self.shared_arr[5] == 1.:
-            self.shared_arr[5] = 0.
-            self.buffer='d'
-            #print ("toggle DNN mode")
-        elif self.shared_arr[6] == 1.:
-            self.shared_arr[6] = 0.
-            self.buffer='q'
-            #self.finish.value = 0
-        elif self.shared_arr[7] == 1.:
-            self.shared_arr[7] = 0.
-            self.buffer='t'
-            #print ("toggle video mode")
-
-        self.direction = self.shared_arr[0] 
-        self.speed = self.shared_arr[8]
-        self.lock.release()
-
-        return self.buffer, self.direction, self.speed
-
-    def stop(self):
-        self.ws_process.terminate()
+#                     elif number == 2:  # throttle: 0 to 32767
+#                         val = value / 32767.0
+#                         if val < 0.05:
+#                             shr_gamepad_state[8] = 0.0
+#                         else:
+#                             shr_gamepad_state[8] = val
+ 
+ 
+#             elif event_type == JS_EVENT_BUTTON and value == 1:
+#                 if number == 34:  #record
+#                     shr_gamepad_state[4] = 1.
+#                 elif number == 35:  #dnn
+#                     shr_gamepad_state[5] = 1.
+#                 elif number == 24:  #quit
+#                     shr_gamepad_state[6] = 1.
+#                 elif number == 13:  # Right trigger button
+#                     if offset > -10:
+#                         offset -= 1
+#                         self.save_calibration(offset)
+#                 elif number == 12:  # Left trigger button
+#                     if offset < 10:
+#                         offset += 1
+#                         self.save_calibration(offset)
+#             lock.release()
+ 
+#     def read_inp(self):
+#         self.buffer = ' '
+#         self.lock.acquire()
+#         if self.shared_arr[1] == 1.:
+#             self.shared_arr[1] = 0.
+#             self.buffer = 'a'
+#         elif self.shared_arr[2] == 1.:
+#             self.shared_arr[2] = 0.
+#             self.buffer = 'z'
+#         elif self.shared_arr[3] == 1.:
+#             self.shared_arr[3] = 0.
+#             self.buffer = 's'
+#         elif self.shared_arr[4] == 1.:
+#             self.shared_arr[4] = 0.
+#             self.buffer = 'r'
+#         elif self.shared_arr[5] == 1.:
+#             self.shared_arr[5] = 0.
+#             self.buffer = 'd'
+#         elif self.shared_arr[6] == 1.:
+#             self.shared_arr[6] = 0.
+#             self.buffer = 'q'
+#         elif self.shared_arr[7] == 1.:
+#             self.shared_arr[7] = 0.
+#             self.buffer = 't'
+ 
+#         self.direction = self.shared_arr[0]
+#         self.speed     = self.shared_arr[8]
+#         self.lock.release()
+ 
+#         return self.buffer, self.direction, self.speed
+ 
+#     def stop(self):
+#         self.gamepad_process.terminate()
+ 
 
 class input_type:
     KEYBOARD=0
@@ -346,6 +380,6 @@ def instantiate_inp_stream(inp_type, def_throttle):
     elif inp_type == input_type.GAMEPAD:
         inp_stream= input_gamepad(def_throttle)
     elif inp_type == input_type.WEB:
-        inp_stream= input_web(def_throttle)
+        inp_stream= input_udp_gamepad(def_throttle)
 
     return inp_stream
